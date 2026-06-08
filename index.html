@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SignScan — Traffic Sign Detector</title>
+<style>
+:root {
+  --bg:#0d0f12; --surface:#141720; --card:#1c2030; --border:#2a3040;
+  --yellow:#f5c518; --yellow-dk:#b8920e;
+  --green:#22c55e; --red:#ef4444; --amber:#f59e0b; --blue:#6366f1;
+  --text:#e2e8f0; --muted:#64748b;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+/* ── HEADER ── */
+header{display:flex;align-items:center;gap:14px;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;}
+.logo{display:flex;align-items:center;gap:10px;}
+.logo-icon{width:36px;height:36px;background:var(--yellow);border-radius:8px;display:flex;align-items:center;justify-content:center;}
+.logo-icon svg{width:20px;height:20px;}
+.logo-name{font-size:20px;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
+.logo-sub{font-size:10px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.pill{background:#1a1730;border:1px solid #3b2d6b;color:#a78bfa;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;letter-spacing:.5px;display:flex;align-items:center;gap:5px;}
+.pill-dot{width:6px;height:6px;border-radius:50%;background:#a78bfa;animation:blink 2s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── WORKSPACE ── */
+.workspace{flex:1;display:grid;grid-template-columns:1fr 400px;overflow:hidden;}
+
+/* ── LEFT: CAMERA ── */
+.cam-panel{display:flex;flex-direction:column;border-right:1px solid var(--border);}
+.cam-bar{display:flex;align-items:center;gap:8px;padding:10px 18px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;}
+.cam-bar-label{font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);}
+.live-badge{margin-left:auto;background:#112011;border:1px solid #1e3b1e;color:var(--green);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;display:flex;align-items:center;gap:4px;display:none;}
+.ldot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:blink 1.4s infinite;}
+.fps{font-size:10px;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:6px;padding:2px 7px;display:none;}
+
+.video-wrap{flex:1;position:relative;overflow:hidden;background:#050608;display:flex;align-items:center;justify-content:center;}
+#webcam{width:100%;height:100%;object-fit:cover;display:none;}
+#overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;}
+
+.hud{position:absolute;inset:0;pointer-events:none;}
+.hc{position:absolute;width:26px;height:26px;border-color:var(--yellow);border-style:solid;opacity:.7;}
+.hc.tl{top:14px;left:14px;border-width:2px 0 0 2px;}
+.hc.tr{top:14px;right:14px;border-width:2px 2px 0 0;}
+.hc.bl{bottom:14px;left:14px;border-width:0 0 2px 2px;}
+.hc.br{bottom:14px;right:14px;border-width:0 2px 2px 0;}
+.scanline{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--yellow),transparent);animation:scan 2.4s ease-in-out infinite;opacity:0;}
+@keyframes scan{0%{top:5%;opacity:0}8%{opacity:.5}92%{opacity:.5}100%{top:95%;opacity:0}}
+
+.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;}
+
+.no-cam{display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--muted);text-align:center;padding:40px;}
+.no-cam svg{width:52px;height:52px;opacity:.2;}
+.no-cam p{font-size:13px;line-height:1.65;}
+
+/* Detecting spinner overlay */
+.detecting-overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;gap:10px;font-size:13px;font-weight:500;backdrop-filter:blur(2px);}
+.spin{width:26px;height:26px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:var(--yellow);animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── CONTROLS ── */
+.ctrl-bar{display:flex;align-items:center;gap:8px;padding:12px 18px;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0;}
+.ibtn{width:44px;height:44px;border-radius:10px;flex-shrink:0;background:var(--card);border:1px solid var(--border);color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s;}
+.ibtn:hover{background:var(--border);}
+.ibtn svg{width:18px;height:18px;}
+.btn-main{flex:1;height:44px;background:var(--yellow);color:#000;border:none;border-radius:10px;font-size:14px;font-weight:700;letter-spacing:.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:background .15s,opacity .15s;}
+.btn-main:hover{background:#ffd84d;}
+.btn-main:disabled{opacity:.35;cursor:not-allowed;}
+.btn-main svg{width:16px;height:16px;}
+.auto-wrap{display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;}
+.auto-wrap input{display:none;}
+.pill-track{width:36px;height:20px;border-radius:10px;background:var(--border);position:relative;transition:background .2s;}
+.pill-track.on{background:var(--yellow-dk);}
+.pill-thumb{position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--muted);transition:left .2s,background .2s;}
+.pill-track.on .pill-thumb{left:19px;background:var(--yellow);}
+.auto-lbl{font-size:12px;color:var(--muted);white-space:nowrap;}
+
+/* ── RIGHT: RESULTS ── */
+.res-panel{display:flex;flex-direction:column;background:var(--surface);}
+.res-hdr{display:flex;align-items:center;gap:8px;padding:10px 18px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.res-hdr-lbl{font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);}
+.res-cnt{margin-left:auto;font-size:11px;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:20px;padding:1px 9px;}
+.res-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:11px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.res-body::-webkit-scrollbar{width:3px;}
+.res-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;flex:1;color:var(--muted);text-align:center;padding:32px 16px;min-height:200px;}
+.empty svg{width:42px;height:42px;opacity:.18;}
+.empty h3{font-size:14px;font-weight:600;opacity:.5;}
+.empty p{font-size:12px;line-height:1.65;opacity:.4;}
+
+.loading-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px;animation:up .2s ease;}
+@keyframes up{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.loading-spin{width:30px;height:30px;border-radius:50%;border:2.5px solid var(--border);border-top-color:var(--yellow);animation:spin .7s linear infinite;flex-shrink:0;}
+.loading-text h4{font-size:13px;font-weight:600;margin-bottom:2px;}
+.loading-text p{font-size:11px;color:var(--muted);}
+
+.rcard{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;animation:up .22s ease;}
+.rcard:hover{border-color:#3d3000;}
+.rcard-top{display:flex;align-items:center;gap:10px;padding:11px 13px 9px;}
+.rthumb{width:50px;height:50px;border-radius:8px;object-fit:cover;flex-shrink:0;border:1px solid var(--border);}
+.rmeta{flex:1;min-width:0;}
+.rname{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rname.ok{color:var(--yellow);}
+.rname.no{color:var(--red);}
+.rsub{font-size:10.5px;color:var(--muted);margin-top:2px;}
+.conf{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;flex-shrink:0;}
+.conf.hi{background:#0e2010;border:1px solid #1e4020;color:var(--green);}
+.conf.md{background:#201808;border:1px solid #3a2808;color:var(--amber);}
+.conf.lo{background:#200808;border:1px solid #3a1010;color:var(--red);}
+.rdiv{height:1px;background:var(--border);margin:0 13px;}
+.rdesc{padding:9px 13px 11px;font-size:12.5px;line-height:1.65;color:#c5c8d4;}
+.rdesc b{color:var(--text);}
+.raction{margin-top:7px;font-size:12px;color:var(--muted);}
+.raction b{color:var(--amber);font-weight:600;}
+.rextra{margin-top:5px;font-size:11px;color:var(--muted);}
+.rtags{display:flex;flex-wrap:wrap;gap:4px;padding:0 13px 11px;}
+.rtag{background:var(--bg);border:1px solid var(--border);border-radius:4px;font-size:10.5px;padding:1px 7px;color:var(--muted);}
+
+.model-bar{padding:7px 18px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.model-bar b{color:#a78bfa;font-weight:600;}
+
+.err-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);background:#200808;border:1px solid var(--red);color:#fca5a5;padding:9px 18px;border-radius:9px;font-size:12.5px;z-index:999;transition:transform .3s;pointer-events:none;}
+.err-toast.show{transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5">
+        <polygon points="12,3 22,21 2,21"/>
+        <line x1="12" y1="9" x2="12" y2="14" stroke-width="2.5"/>
+        <circle cx="12" cy="17.5" r="1" fill="#000" stroke="none"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-name">SignScan</div>
+      <div class="logo-sub">AI Traffic Sign Detector</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="pill">
+      <div class="pill-dot"></div>
+      Python · YOLOv8 · Offline
+    </div>
+  </div>
+</header>
+
+<div class="workspace">
+
+  <!-- LEFT: LIVE WEBCAM -->
+  <div class="cam-panel">
+    <div class="cam-bar">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--muted)">
+        <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+      </svg>
+      <span class="cam-bar-label">Live Webcam</span>
+      <div class="live-badge" id="liveBadge"><div class="ldot"></div>LIVE</div>
+      <div class="fps" id="fpsBadge">0 FPS</div>
+    </div>
+
+    <div class="video-wrap" id="videoWrap">
+      <video id="webcam" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+
+      <div class="hud">
+        <div class="hc tl"></div><div class="hc tr"></div>
+        <div class="hc bl"></div><div class="hc br"></div>
+        <div class="scanline"></div>
+      </div>
+      <div class="flash" id="flash"></div>
+      <div class="detecting-overlay" id="detectingOverlay">
+        <div class="spin"></div> Detecting…
+      </div>
+
+      <div class="no-cam" id="noCam">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+          <line x1="1" y1="1" x2="23" y2="23"/>
+        </svg>
+        <p>Click <strong>Start Camera</strong> below.<br/>Allow browser camera access when prompted.</p>
+      </div>
+    </div>
+
+    <div class="ctrl-bar">
+      <div class="ibtn" title="Start camera" onclick="startCamera()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+        </svg>
+      </div>
+
+      <button class="btn-main" id="btnCapture" onclick="manualCapture()" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <circle cx="12" cy="13" r="3"/>
+          <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/>
+        </svg>
+        Capture &amp; Detect
+      </button>
+
+      <label class="ibtn" title="Upload image">
+        <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="uploadFile(event)"/>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </label>
+
+      <label class="auto-wrap">
+        <input type="checkbox" id="autoToggle" onchange="toggleAuto()"/>
+        <div class="pill-track" id="pillTrack"><div class="pill-thumb"></div></div>
+        <span class="auto-lbl">Auto</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- RIGHT: RESULTS -->
+  <div class="res-panel">
+    <div class="res-hdr">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:var(--muted)">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      <span class="res-hdr-lbl">Detection Results</span>
+      <div class="res-cnt" id="resCount">0 scans</div>
+    </div>
+
+    <div class="res-body" id="resBody">
+      <div class="empty" id="emptyState">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <h3>No Detections Yet</h3>
+        <p>Start the camera, click <strong>Capture &amp; Detect</strong><br/>or enable Auto mode.</p>
+      </div>
+    </div>
+
+    <div class="model-bar">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color:#a78bfa">
+        <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+      </svg>
+      Backend: <b>Python Flask + YOLOv8</b> &nbsp;·&nbsp; 100% offline
+    </div>
+  </div>
+</div>
+
+<canvas id="captureCanvas" style="display:none;"></canvas>
+<div class="err-toast" id="errToast"></div>
+
+<script>
+/* ─── State ─── */
+let camStream = null, autoTimer = null, busy = false;
+let scanCount = 0, frameCount = 0, fpsTimer = null;
+
+const webcam   = document.getElementById('webcam');
+const overlay  = document.getElementById('overlay');
+const capCvs   = document.getElementById('captureCanvas');
+const flash    = document.getElementById('flash');
+const noCam    = document.getElementById('noCam');
+const btnCap   = document.getElementById('btnCapture');
+const resBody  = document.getElementById('resBody');
+const resCount = document.getElementById('resCount');
+const liveBadge= document.getElementById('liveBadge');
+const fpsBadge = document.getElementById('fpsBadge');
+const pillTrack= document.getElementById('pillTrack');
+const detectOv = document.getElementById('detectingOverlay');
+const errToast = document.getElementById('errToast');
+
+/* ─── Camera ─── */
+async function startCamera() {
+  try {
+    if (camStream) camStream.getTracks().forEach(t => t.stop());
+    const constraints = {
+      video: { facingMode: 'environment', width: {ideal:1280}, height: {ideal:720} },
+      audio: false
+    };
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+    webcam.srcObject = camStream;
+    webcam.style.display = 'block';
+    noCam.style.display  = 'none';
+    liveBadge.style.display = 'flex';
+    fpsBadge.style.display  = 'block';
+    btnCap.disabled = false;
+
+    webcam.addEventListener('loadedmetadata', () => {
+      overlay.width  = webcam.videoWidth;
+      overlay.height = webcam.videoHeight;
+    }, { once: true });
+
+    // FPS counter
+    frameCount = 0;
+    clearInterval(fpsTimer);
+    fpsTimer = setInterval(() => {
+      fpsBadge.textContent = frameCount + ' FPS';
+      frameCount = 0;
+    }, 1000);
+    requestAnimationFrame(fpsLoop);
+
+  } catch (e) {
+    showErr('Camera error: ' + e.message);
+    console.error(e);
+  }
+}
+
+function fpsLoop() {
+  if (!camStream) return;
+  frameCount++;
+  requestAnimationFrame(fpsLoop);
+}
+
+/* ─── Capture & send to Python backend ─── */
+function manualCapture() {
+  if (!camStream || busy) return;
+  flash.style.opacity = '.7';
+  setTimeout(() => flash.style.opacity = '0', 120);
+
+  capCvs.width  = webcam.videoWidth  || 640;
+  capCvs.height = webcam.videoHeight || 480;
+  capCvs.getContext('2d').drawImage(webcam, 0, 0);
+
+  const dataURL = capCvs.toDataURL('image/jpeg', 0.85);
+  sendToBackend(dataURL, dataURL);
+}
+
+function uploadFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    capCvs.width  = img.width;
+    capCvs.height = img.height;
+    capCvs.getContext('2d').drawImage(img, 0, 0);
+    const dataURL = capCvs.toDataURL('image/jpeg', 0.85);
+    sendToBackend(dataURL, dataURL);
+    URL.revokeObjectURL(url);
+  };
+  img.src = url;
+  e.target.value = '';
+}
+
+/* ─── POST to /detect (Python Flask) ─── */
+async function sendToBackend(dataURL, thumbURL) {
+  if (busy) return;
+  busy = true;
+  btnCap.disabled = true;
+  detectOv.style.display = 'flex';
+
+  // Show loading card
+  removeEmpty();
+  const lid = 'ld' + Date.now();
+  const lcard = document.createElement('div');
+  lcard.className = 'loading-card'; lcard.id = lid;
+  lcard.innerHTML = '<div class="loading-spin"></div><div class="loading-text"><h4>Running YOLOv8 detection…</h4><p>Python backend is processing the frame</p></div>';
+  resBody.insertBefore(lcard, resBody.firstChild);
+
+  try {
+    const resp = await fetch('/detect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataURL })
+    });
+
+    const result = await resp.json();
+    document.getElementById(lid)?.remove();
+
+    if (result.error) { showErr('Server error: ' + result.error); }
+    else {
+      scanCount++;
+      resCount.textContent = scanCount + (scanCount === 1 ? ' scan' : ' scans');
+      drawBoxes(result.boxes || []);
+      renderCard(result, thumbURL);
+    }
+
+  } catch (err) {
+    document.getElementById(lid)?.remove();
+    showErr('Cannot reach Flask server. Is app.py running?');
+    console.error(err);
+  }
+
+  busy = false;
+  btnCap.disabled = false;
+  detectOv.style.display = 'none';
+}
+
+/* ─── Draw bounding boxes on overlay canvas ─── */
+let lastBoxes = [];
+function drawBoxes(boxes) {
+  lastBoxes = boxes;
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  const sx = overlay.width  / (webcam.videoWidth  || 640);
+  const sy = overlay.height / (webcam.videoHeight || 480);
+
+  for (const b of boxes) {
+    const [x, y, w, h] = b.bbox;
+    ctx.strokeStyle = '#f5c518';
+    ctx.lineWidth   = 2.5;
+    ctx.strokeRect(x * sx, y * sy, w * sx, h * sy);
+
+    const label = `${b.class} ${Math.round(b.conf * 100)}%`;
+    ctx.font      = 'bold 13px Segoe UI, sans-serif';
+    const tw      = ctx.measureText(label).width;
+    ctx.fillStyle = '#f5c518';
+    ctx.fillRect(x * sx - 1, y * sy - 22, tw + 10, 22);
+    ctx.fillStyle = '#000';
+    ctx.fillText(label, x * sx + 4, y * sy - 5);
+  }
+}
+
+/* ─── Auto detect ─── */
+function toggleAuto() {
+  const on = document.getElementById('autoToggle').checked;
+  pillTrack.classList.toggle('on', on);
+  if (on) {
+    autoTimer = setInterval(() => { if (!busy && camStream) manualCapture(); }, 2500);
+  } else {
+    clearInterval(autoTimer);
+    autoTimer = null;
+  }
+}
+
+/* ─── Render result card ─── */
+function renderCard(r, thumb) {
+  const cc = r.confidence === 'High' ? 'hi' : r.confidence === 'Medium' ? 'md' : 'lo';
+  const tags = (r.tags || []).map(t => `<span class="rtag">${esc(t)}</span>`).join('');
+  const card = document.createElement('div');
+  card.className = 'rcard';
+  card.innerHTML = `
+    <div class="rcard-top">
+      <img class="rthumb" src="${thumb}" alt=""/>
+      <div class="rmeta">
+        <div class="rname ${r.detected ? 'ok' : 'no'}">${esc(r.sign_name)}</div>
+        <div class="rsub">${esc(r.category)} · ${r.elapsed_ms ?? '?'}ms · ${new Date().toLocaleTimeString()} · ${esc(r.source)}</div>
+      </div>
+      <span class="conf ${cc}">${esc(r.confidence)} ${r.conf_pct ? r.conf_pct + '%' : ''}</span>
+    </div>
+    <div class="rdiv"></div>
+    <div class="rdesc">
+      <b>${esc(r.description)}</b>
+      <div class="raction"><b>Driver action:</b> ${esc(r.action)}</div>
+      ${r.all_objects ? `<div class="rextra">All detected: ${esc(r.all_objects)}</div>` : ''}
+    </div>
+    ${tags ? `<div class="rtags">${tags}</div>` : ''}
+  `;
+  resBody.insertBefore(card, resBody.firstChild);
+}
+
+function removeEmpty() { document.getElementById('emptyState')?.remove(); }
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function showErr(msg) {
+  errToast.textContent = msg;
+  errToast.classList.add('show');
+  setTimeout(() => errToast.classList.remove('show'), 5000);
+}
+
+// Auto-start camera on load
+startCamera();
+</script>
+</body>
+</html>
