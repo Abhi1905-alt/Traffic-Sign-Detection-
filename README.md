@@ -5,7 +5,7 @@ Live webcam feed in the browser, all inference runs locally in Python — no int
 
 ---
 
-## 📂 Project Structure
+##  Project Structure
 
 ```
 traffic-sign-detector/
@@ -19,7 +19,7 @@ traffic-sign-detector/
 
 ---
 
-## 🚀 Setup (one time)
+##  Setup (one time)
 
 ### 1. Create a virtual environment (recommended)
 ```bash
